@@ -1,0 +1,14 @@
+一、vscode的远程开发
+
+1、sftp的使用
+
+Ctrl+Shift+P 后，输入sftp，选择 Config 功能，然后 VSCode 会在当前目录下生成.VSCode 目录，并创建 sftp.json 文件，即为 sftp 要同步文件到其他机器的配置信息
+
+
+1、首先要安装eclipse的远程插件rse
+
+以前在market里边可以找到，现在没了，直接去下载页面了
+
+https://download.eclipse.org/tm/downloads/drops/R-3.4-201205300905/
+
+下载RSE-runtime-3.4.zip这个，解压后直接合并eclipse的futures和plugins文件夹即可
