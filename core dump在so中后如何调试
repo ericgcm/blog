@@ -1,0 +1,147 @@
+core dump以后呢，首先会打印编译符号后的，可以在http://demangler.com/网站汇总进行转译。然后呢，
+
+一般core在动态链接库里边的时候，不会打印出具体位置，但会类似有以下信息：
+
+
+
+这时候怎么搞呢？有2种方法去看
+
+1. 反汇编分析
+
+执行：objdump -d libxxx.so > a.txt
+
+然后vi a.txt直接查找 f6be3或者f724a，就可以找到具体的函数调用位置
+
+2、addr2line -e libxxx.so 
+
+这个更加清楚，直接回输出代码中的行数
+
+3、dmesg 联合查找
+
+如果没有core dump文件的时候：
+
+(1）排查手法1
+
+pkgdeal[6362]: segfault at 1d ip 0031f8ba sp bff14fe0 error 4 in libtrsies.so[30f000+35000]
+
+0x31f8ba - 0x30f000 = 0x108BA
+
+addr2line -e libxx.so 0x108ba -f
+
+fun_name
+
+xxxxx.cc:123
+
+(2) 排查方法2
+
+dmesg 发现如下两行：
+
+[3612464.102140] tagent[29001]: segfault at 7f499fee11d8 ip 00000000004267aa sp 00007f499fee11e0 error 6 in tagent[400000+13d000]
+
+[3619693.083152] test[8223]: segfault at 7fff7319a000 ip 000000000040056d sp 00007fff731991b0 error 6 in test[400000+1000]
+
+由日志可以看出程序 core 在 13:27:17 左右，但是 dmesg 中并没与时间戳。
+
+获取 dmesg 日志中的时间戳
+
+dmesg 日志中的“时间”(3612464.102140) 表示的是系统启动到事件发生的时间差，这个值可以转换成时间戳：
+
+$ echo "$(date +%s) - $(cat /proc/uptime | cut -f 1 -d' ') + 3612464.102140" | bc
+
+1460525237.192140
+
+将时间戳进一步转换：
+
+$ date -d '@1460525237' '+%Y-%m-%d %H:%M:%S'         
+
+2016-04-13 13:27:17
+
+发现时间吻合，程序的确是 core 掉了。
+
+注：/proc/uptime 第一列表示的是系统开机时间，根据这个值和当前时间可以获取到 dmesg 日志中事件发生的时间。
+
+addr2line 找到代码 core 的地方
+
+$ addr2line -e tagent 00000000004267aa -f
+
+4、如何生成打印出core dump
+
+#include<stdlib.h>
+
+#include<stdio.h>
+
+#include<stddef.h>
+
+#include<signal.h>
+
+#include<execinfo.h>// 0: GENERATE COREDUMP FILE // 1: PRINT STACK BY SELFintg_iTestFlag=1;
+
+#define ADDR_MAX_NUM 100
+
+voidCallbackSignal(intiSignalNo){
+
+printf("CALLBACK: SIGNAL:\n",iSignalNo);
+
+void*pBuf[ADDR_MAX_NUM]={0};
+
+intiAddrNum=backtrace(pBuf,ADDR_MAX_NUM);
+
+printf("BACKTRACE: NUMBER OF ADDRESSES IS:%d\n\n",iAddrNum);
+
+char**strSymbols=backtrace_symbols(pBuf,iAddrNum);
+
+if(strSymbols==NULL){
+
+printf("BACKTRACE: CANNOT GET BACKTRACE SYMBOLS\n");
+
+return;
+
+}
+
+int ii=0;
+
+for(ii=0;ii<iAddrNum;ii++){
+
+printf("%03d %s\n",iAddrNum-ii,strSymbols[ii]);
+
+}
+
+printf("\n");
+
+free(strSymbols);
+
+strSymbols=NULL;
+
+exit(1);// QUIT PROCESS. IF NOT, MAYBE ENDLESS LOOP.
+
+}
+
+void FuncBadBoy(){
+
+void*pBadThing=malloc(1024*1024*256);
+
+free(pBadThing);free(pBadThing);
+
+}
+
+void FuncBadFather(){
+
+FuncBadBoy();
+
+}
+
+int main(intargc,char**argv){
+
+if(g_iTestFlag){
+
+signal(SIGSEGV,CallbackSignal);
+
+}
+
+FuncBadFather();
+
+return0;
+
+}
+
+拒绝超大coredump - 用backtrace和addr2line搞定异常函数栈 - 知乎
